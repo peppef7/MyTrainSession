@@ -146,6 +146,15 @@ table.sets{width:100%;border-collapse:collapse;margin-top:12px;font-variant-nume
 .err{color:var(--bad);font-size:14px;margin-top:10px}
 .tiny{font-size:12px;color:var(--muted)}
 .links{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.fld select{width:100%;box-sizing:border-box;padding:11px 12px;border:0;border-radius:10px;background:var(--card);color:var(--fg);font:inherit;font-size:16px}
+.fld input[type=number]{width:100%;box-sizing:border-box;padding:11px 12px;border:0;border-radius:10px;background:var(--card);color:var(--fg);font:inherit;font-size:16px}
+.wgrid{display:grid;gap:6px}
+.wrow{display:grid;grid-template-columns:28px 52px minmax(0,1fr) 44px minmax(0,1.3fr);gap:6px;align-items:center}
+.wrow b{font-size:13px;color:var(--muted)}
+.wrow.cur b{color:var(--accent)}
+.wrow.wh span{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase}
+.wrow input,.wrow select{width:100%;min-width:0;box-sizing:border-box;padding:9px 6px;border:0;border-radius:8px;background:var(--card);color:var(--fg);font:inherit;font-size:16px}
+.wrow select{font-size:14px;padding:9px 2px}
 /* salute */
 .bars em.trn{display:block;width:6px;height:6px;border-radius:50%;background:var(--ok)}
 .bars em.trn.off{background:none}
