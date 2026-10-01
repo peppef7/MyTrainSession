@@ -1,5 +1,6 @@
 import { S, save, addPlan, deletePlan, plan as getPlan, key, exportBackup, importBackup, askPersistence } from './store.js';
 import { parsePlanPdf } from './parser.js';
+import { healthView, homeRow, today } from './health.js';
 
 const DIST = { S: 'Spalle', P: 'Petto', Q: 'Quadricipiti', E: 'Femorali', D: 'Dorsali', T: 'Centro schiena', B: 'Bicipiti', TB: 'Tricipiti', A: 'Addome', C: 'Cardio', G: 'Glutei', Z: 'Polpacci' };
 const app = document.getElementById('app');
@@ -61,6 +62,7 @@ app.addEventListener('click', e => {
   if (what === 'import') openImport();
   if (what === 'report') openReport(arg);
   if (what === 'settings') openSettings();
+  if (what === 'health') push(healthView({ esc, sheet, closeSheet, toast, redraw }));
   if (what === 'week') { const P = getPlan(arg); P.currentWeek = +arg2; save(); redraw(); }
 });
 
@@ -88,7 +90,8 @@ function homeView() {
       const sub = act ? (() => { const w = act.currentWeek; const [d, t] = act.days.reduce((a, day) => { const [x, y] = dayProgress(act, day, w); return [a[0] + x, a[1] + y]; }, [0, 0]); return `Settimana ${w} di ${act.weeks}: ${d} serie su ${t} completate.`; })() : '';
       return `<h1>Le mie schede</h1><p class="sub">${esc(sub)}</p>${res}
         <div class="group" style="margin-top:${res ? 12 : 0}px">${rows}</div>
-        <div style="margin-top:14px"><button class="btn ghost" data-go="import">＋ Carica scheda PDF</button></div>`;
+        <div style="margin-top:14px"><button class="btn ghost" data-go="import">＋ Carica scheda PDF</button></div>
+        ${homeRow(esc)}`;
     },
     bind(el) {
       el.querySelector('#sample')?.addEventListener('click', async () => {
@@ -211,6 +214,7 @@ function bindDay(el, P, day) {
     const v = S.log[k] || (S.log[k] = {});
     tr.querySelectorAll('input').forEach(inp => { if (inp.value === '' && /^[\d,.]+$/.test(inp.placeholder)) inp.value = inp.placeholder; v[inp.dataset.f] = num(inp.value); });
     v.done = v.done ? 0 : 1;
+    if (v.done) v.at = today(); // giorno dell'allenamento, per la schermata Salute
     const [d, n] = exDone(P, day, i, w); if (d >= n) delete S.open[key(P, w, day.id, i, 'o')];
     save(); redraw();
     if (v.done) startTimer(day.circuit ? 90 : restSeconds(day.ex[i].rest), day.ex[i].n);

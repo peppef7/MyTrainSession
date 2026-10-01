@@ -1,7 +1,7 @@
 // Stato dell'app salvato sul dispositivo (localStorage), con backup esportabile.
 const KEY = 'mts-v1';
 
-const empty = () => ({ version: 1, activePlanId: null, plans: [], log: {}, notes: {}, open: {} });
+const empty = () => ({ version: 1, activePlanId: null, plans: [], log: {}, notes: {}, open: {}, health: {} });
 
 export const S = load();
 
