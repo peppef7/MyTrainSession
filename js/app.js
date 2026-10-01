@@ -8,21 +8,29 @@ const fmt = x => String(x).replace('.', ',');
 const num = v => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? null : x; };
 
 /* ---------- Regole della scheda ---------- */
+// Modalità della serie: back off e test arrivano dal PDF, le altre si impostano a mano
+const MODES = [['normale', 'Normale', ''], ['backoff', 'Back off −20%', 'Ultima back off −20%'], ['drop', 'Drop set', 'Ultima drop set'],
+  ['restpause', 'Rest-pause', 'Ultima rest-pause'], ['cedimento', 'Cedimento', 'A cedimento'], ['test', 'Test', '']];
+const modeOf = (e, p) => p?.mode || (p?.test ? 'test' : p?.bo || e.bo ? 'backoff' : 'normale');
+const lastSpecial = m => m === 'backoff' || m === 'drop' || m === 'restpause';
 function presc(day, e, w) {
   if (day.circuit) return { sets: day.circuit.rounds, circuit: true };
   const p = e.weeks?.[w - 1] || e.weeks?.find(Boolean) || { sets: 1, reps: '' };
-  return { ...p, bo: p.bo || e.bo };
+  const mode = modeOf(e, p);
+  return { ...p, mode, bo: mode === 'backoff' };
 }
+// Esercizi tolti dalla scheda restano nell'array (con off) così lo storico, indicizzato per posizione, non si sposta
+const live = day => day.ex.map((e, i) => [e, i]).filter(([e]) => !e.off);
 const isTimed = (day, e) => day.circuit || /["”]/.test(e.weeks?.find(Boolean)?.reps || '');
 function nSets(P, day, i, w) {
   const extra = S.log[key(P, w, day.id, i, 'x')] || 0;
   return presc(day, day.ex[i], w).sets + extra;
 }
 function exDone(P, day, i, w) { const n = nSets(P, day, i, w); let d = 0; for (let s = 0; s < n; s++) if (S.log[key(P, w, day.id, i, s)]?.done) d++; return [d, n]; }
-function dayProgress(P, day, w) { let t = 0, d = 0; day.ex.forEach((e, i) => { const [a, n] = exDone(P, day, i, w); d += a; t += n; }); return [d, t]; }
+function dayProgress(P, day, w) { let t = 0, d = 0; live(day).forEach(([e, i]) => { const [a, n] = exDone(P, day, i, w); d += a; t += n; }); return [d, t]; }
 const dayState = (P, day, w) => { const [d, t] = dayProgress(P, day, w); return d === 0 ? 'todo' : d >= t ? 'done' : 'partial'; };
-const firstOpen = (P, day, w) => day.ex.findIndex((e, i) => { const [d, n] = exDone(P, day, i, w); return d < n; });
-const exLeft = (P, day, w) => day.ex.filter((e, i) => { const [d, n] = exDone(P, day, i, w); return d < n; }).length;
+const firstOpen = (P, day, w) => day.ex.findIndex((e, i) => { if (e.off) return false; const [d, n] = exDone(P, day, i, w); return d < n; });
+const exLeft = (P, day, w) => live(day).filter(([e, i]) => { const [d, n] = exDone(P, day, i, w); return d < n; }).length;
 
 /* ---------- Navigazione a pila ---------- */
 const stack = [];
@@ -118,7 +126,7 @@ function openPlan(id) {
         return `<button class="row" data-go="day:${P.id}:${day.id}">
           <span class="badge">${esc(day.id)}</span>
           <span class="grow"><div class="ti">Scheda ${esc(day.id)}${day.focus ? ' · ' + esc(day.focus) : ''}</div>
-          <div class="de">${day.ex.length} esercizi${day.circuit ? ' · ' + day.circuit.rounds + ' giri' : ''}</div>
+          <div class="de">${live(day).length} esercizi${day.circuit ? ' · ' + day.circuit.rounds + ' giri' : ''}</div>
           ${pill ? `<div style="margin-top:6px">${pill}</div>` : ''}
           <div class="prog" style="margin:8px 0 0"><i style="width:${t ? d / t * 100 : 0}%"></i></div></span>
           <span class="chev">›</span></button>`;
@@ -158,10 +166,11 @@ function dayView(P, day) {
   const test = day.ex.some(e => e.weeks?.[w - 1]?.test);
   const res = dayState(P, day, w) === 'partial' ? `<div class="resume"><span class="grow"><b>Allenamento lasciato a metà</b><br><span style="color:var(--muted)">Mancano ${exLeft(P, day, w)} esercizi. Riprendi da ${esc(day.ex[firstOpen(P, day, w)].n)}.</span></span><button id="resume">Riprendi</button></div>` : '';
   return `<h1>Scheda ${esc(day.id)}</h1><p class="sub">${esc(day.focus || '')}${day.focus ? ' · ' : ''}settimana ${w}${test ? ' (serie test)' : ''}</p>
-    <div class="stats"><div><b>${d}/${t}</b><span>serie fatte</span></div><div><b>${Math.round(vol).toLocaleString('it-IT')}</b><span>kg sollevati</span></div><div><b>${day.ex.filter((e, i) => { const [a, n] = exDone(P, day, i, w); return a >= n; }).length}/${day.ex.length}</b><span>esercizi fatti</span></div></div>
+    <div class="stats"><div><b>${d}/${t}</b><span>serie fatte</span></div><div><b>${Math.round(vol).toLocaleString('it-IT')}</b><span>kg sollevati</span></div><div><b>${live(day).filter(([e, i]) => { const [a, n] = exDone(P, day, i, w); return a >= n; }).length}/${live(day).length}</b><span>esercizi fatti</span></div></div>
     <div class="prog" style="margin-top:12px"><i style="width:${t ? d / t * 100 : 0}%"></i></div>
-    ${res}${dn}${day.ex.map((e, i) => exCard(P, day, e, i, w)).join('')}
-    <div style="margin-top:18px"><button class="btn" id="finish">Salva e chiudi</button></div>
+    ${res}${dn}${live(day).map(([e, i]) => exCard(P, day, e, i, w)).join('')}
+    <button class="addset" id="addex" style="margin-top:10px">＋ Aggiungi esercizio</button>
+    <div style="margin-top:14px"><button class="btn" id="finish">Salva e chiudi</button></div>
     <p class="demo">Ogni serie si salva appena la scrivi. Se chiudi a metà, la prossima volta riparti dagli esercizi che mancano.</p>`;
 }
 function exCard(P, day, e, i, w) {
@@ -175,14 +184,15 @@ function exCard(P, day, e, i, w) {
     const sets = []; for (let s = 0; s < n; s++) { const v = S.log[key(P, w, day.id, i, s)]; sets.push(`${fmt(v.kg ?? 0)}×${v.r ?? '–'}`); }
     return `<article class="ex complete" id="ex-${i}">${head}<div class="sumline">✓ ${sets.join(' · ')} <small>${note ? '· nota salvata ' : ''}· tocca per modificare</small></div></article>`;
   }
-  const chips = p.circuit ? `<span class="hl">${day.circuit.rounds} giri</span>` :
-    `<span class="hl">${p.sets} × ${esc(p.reps)}</span>${p.rir != null ? `<span>RIR ${p.rir}</span>` : ''}${e.rest ? `<span>Recupero ${esc(e.rest)}</span>` : ''}${p.bo ? '<span class="bo">Ultima back off −20%</span>' : ''}`;
+  const mchip = MODES.find(m => m[0] === p.mode)?.[2];
+  const chips = p.circuit ? `<span class="hl">${day.circuit.rounds} giri</span>${e.reps ? `<span>${esc(e.reps)}</span>` : ''}` :
+    `<span class="hl">${p.sets} × ${esc(p.reps)}</span>${p.rir != null ? `<span>RIR ${esc(p.rir)}</span>` : ''}${e.rest ? `<span>Recupero ${esc(e.rest)}</span>` : ''}${mchip ? `<span class="${lastSpecial(p.mode) ? 'bo' : 'hl'}">${mchip}</span>` : ''}`;
   let rows = '';
   for (let s = 0; s < n; s++) {
     const v = S.log[key(P, w, day.id, i, s)] || {}, pv = w > 1 ? S.log[key(P, w - 1, day.id, i, s)] : null;
-    const isBo = p.bo && s === p.sets - 1;
+    const isBo = lastSpecial(p.mode) && s === p.sets - 1;
     rows += `<tr class="${v.done ? 'done' : ''}" data-i="${i}" data-s="${s}">
-      <td><span class="sn ${isBo ? 'bo' : ''}" title="${isBo ? 'Back off' : ''}">${day.circuit ? 'G' : ''}${s + 1}</span></td>
+      <td><span class="sn ${isBo ? 'bo' : ''}" title="${isBo ? esc(mchip) : ''}">${day.circuit ? 'G' : ''}${s + 1}</span></td>
       <td class="prev">${pv && pv.kg != null ? `${fmt(pv.kg)} × ${pv.r ?? '–'}` : '–'}</td>
       <td><input id="kg-${day.id}-${i}-${s}" inputmode="decimal" enterkeyhint="next" placeholder="${pv?.kg != null ? fmt(pv.kg) : 'kg'}" value="${v.kg != null ? fmt(v.kg) : ''}" data-f="kg" aria-label="Carico serie ${s + 1} in kg"></td>
       <td><input id="r-${day.id}-${i}-${s}" inputmode="numeric" enterkeyhint="done" placeholder="${pv?.r ?? unit}" value="${v.r ?? ''}" data-f="r" aria-label="${unit} serie ${s + 1}"></td>
@@ -217,30 +227,89 @@ function bindDay(el, P, day) {
   }));
   el.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => { const k = key(P, w, day.id, b.dataset.add, 'x'); S.log[k] = (S.log[k] || 0) + 1; save(); redraw(); }));
   el.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editExercise(P, day, +b.dataset.edit)));
+  el.querySelector('#addex').addEventListener('click', () => editExercise(P, day, -1));
   el.querySelector('#resume')?.addEventListener('click', () => { el.querySelector(`#ex-${firstOpen(P, day, w)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   el.querySelector('#finish').addEventListener('click', () => { const [d, t] = dayProgress(P, day, w); toast(d >= t ? `Scheda ${day.id} completata` : `Salvato: riprendi quando vuoi (${d}/${t} serie)`); stopTimer(); pop(); });
 }
 const restSeconds = r => { const m = /(\d+)'/.exec(r || ''); return m ? Math.min(+m[1], 5) * 60 : 120; };
 
-/* ---------- Modifica esercizio (per correggere la lettura del PDF) ---------- */
+/* ---------- Modifica esercizio: nome, serie, ripetizioni, modalità ---------- */
+// Le serie già registrate restano dove sono: lo storico è legato a scheda, settimana, giorno e posizione dell'esercizio.
 function editExercise(P, day, i) {
-  const e = day.ex[i];
-  sheet(`<h2 style="margin:0 0 4px;font-size:22px">Modifica esercizio</h2>
-    <p class="sub" style="margin-bottom:0">Correggi quello che l'app ha letto dal PDF. Vale per tutte le settimane.</p>
-    <div class="fld"><label for="e-n">Nome</label><input type="text" id="e-n" value="${esc(e.n)}"></div>
-    <div class="fld"><label for="e-v">Link video</label><input type="url" id="e-v" value="${esc(e.video || '')}" placeholder="https://www.youtube.com/…"></div>
+  const isNew = i < 0, nW = P.weeks || 1, cw = P.currentWeek;
+  const e = isNew ? { d: day.circuit ? 'C' : '', n: '', rest: '', cue: '', setup: '',
+    weeks: day.circuit ? undefined : Array.from({ length: nW }, () => ({ sets: 3, reps: '8–10' })) } : day.ex[i];
+  const distOpts = [...new Set(['', ...Object.keys(DIST), e.d || ''])].map(k => `<option value="${k}" ${k === (e.d || '') ? 'selected' : ''}>${k ? `${k} · ${DIST[k]}` : '—'}</option>`).join('');
+  const modeOpts = m => MODES.map(([k, l]) => `<option value="${k}" ${k === m ? 'selected' : ''}>${l}</option>`).join('');
+  const wrow = w => {
+    const p = e.weeks?.[w - 1] || e.weeks?.find(Boolean) || { sets: 3, reps: '' };
+    return `<div class="wrow${w === cw ? ' cur' : ''}" data-w="${w}"><b>S${w}</b>
+      <input type="number" inputmode="numeric" min="1" max="20" data-k="sets" value="${p.sets ?? ''}" aria-label="Serie settimana ${w}">
+      <input type="text" data-k="reps" value="${esc(p.reps ?? '')}" aria-label="Ripetizioni settimana ${w}">
+      <input type="text" inputmode="numeric" data-k="rir" value="${esc(p.rir ?? '')}" aria-label="RIR settimana ${w}">
+      <select data-k="mode" aria-label="Modalità settimana ${w}">${modeOpts(modeOf(e, p))}</select></div>`;
+  };
+  const grid = day.circuit ? `
+    <div class="fld"><label for="e-reps">Ripetizioni o durata</label><input type="text" id="e-reps" value="${esc(e.reps || '')}" placeholder="Es. 15 reps, 40&quot;"></div>
+    <div class="fld"><label for="e-g">Giri del circuito (tutta la scheda ${esc(day.id)})</label><input type="number" inputmode="numeric" min="1" max="20" id="e-g" value="${day.circuit.rounds}"></div>` : `
+    <div class="fld"><label>Serie, ripetizioni e modalità per settimana</label>
+      <p class="tiny" style="margin:0">Back off, drop set e rest-pause valgono per l'ultima serie.</p>
+      <div class="wgrid"><div class="wrow wh"><span></span><span>Serie</span><span>Reps</span><span>RIR</span><span>Modalità</span></div>
+      ${Array.from({ length: nW }, (_, k) => wrow(k + 1)).join('')}</div>
+      ${nW > 1 ? `<button class="addset" id="e-copy" type="button">Copia S${cw} su tutte le settimane non di test</button>` : ''}</div>`;
+  sheet(`<h2 style="margin:0 0 4px;font-size:22px">${isNew ? 'Nuovo esercizio' : 'Modifica esercizio'}</h2>
+    <p class="sub" style="margin-bottom:0">${isNew ? `Si aggiunge in fondo alla scheda ${esc(day.id)}.` : 'Le serie già registrate non si perdono.'}</p>
+    <div class="fld"><label for="e-n">Nome</label><input type="text" id="e-n" value="${esc(e.n)}" placeholder="Es. Panca piana manubri"></div>
+    <div class="fld"><label for="e-d">Distretto</label><select id="e-d">${distOpts}</select></div>
+    ${grid}
     <div class="fld"><label for="e-r">Recupero</label><input type="text" id="e-r" value="${esc(e.rest || '')}" placeholder="2'–3'"></div>
     <div class="fld"><label for="e-c">Indicazioni del trainer</label><input type="text" id="e-c" value="${esc(e.cue || '')}"></div>
-    ${day.circuit ? '' : `<div class="fld check"><input type="checkbox" id="e-b" ${e.bo || e.weeks?.some(x => x?.bo) ? 'checked' : ''}><label for="e-b">Ultima serie in back off (−20%)</label></div>`}
-    <div class="stack"><button class="btn" id="e-save">Salva</button><button class="btn ghost" data-close>Annulla</button></div>`, sh => {
+    <div class="fld"><label for="e-v">Link video</label><input type="url" id="e-v" value="${esc(e.video || '')}" placeholder="https://www.youtube.com/…"></div>
+    <p class="err" id="e-err" hidden></p>
+    <div class="stack"><button class="btn" id="e-save">Salva</button><button class="btn ghost" data-close>Annulla</button>
+    ${isNew ? '' : `<button class="btn danger small" id="e-del">Togli dalla scheda</button>
+    <div id="e-delc" hidden class="note" style="display:block"><b>Togliere "${esc(e.n)}" dalla scheda?</b><br>Non comparirà più negli allenamenti. Le serie già registrate restano nel report.<div class="stack"><button class="btn danger small" id="e-del2">Togli</button></div></div>`}</div>`, sh => {
+    sh.querySelector('#e-copy')?.addEventListener('click', () => {
+      const src = sh.querySelector(`.wrow[data-w="${cw}"]`);
+      sh.querySelectorAll('.wrow[data-w]').forEach(r => {
+        if (r === src || r.querySelector('[data-k=mode]').value === 'test') return;
+        r.querySelectorAll('[data-k]').forEach(f => { f.value = src.querySelector(`[data-k=${f.dataset.k}]`).value; });
+      });
+      toast(`S${cw} copiata`);
+    });
+    sh.querySelector('#e-del')?.addEventListener('click', () => { sh.querySelector('#e-delc').hidden = false; });
+    sh.querySelector('#e-del2')?.addEventListener('click', () => { e.off = true; save(); closeSheet(); redraw(); toast('Esercizio tolto dalla scheda'); });
     sh.querySelector('#e-save').addEventListener('click', () => {
-      e.n = sh.querySelector('#e-n').value.trim() || e.n;
+      const err = m => { const x = sh.querySelector('#e-err'); x.textContent = m; x.hidden = false; };
+      const name = sh.querySelector('#e-n').value.trim();
+      if (!name) return err('Scrivi il nome dell\'esercizio.');
+      let weeks;
+      if (!day.circuit) {
+        weeks = [];
+        for (const r of sh.querySelectorAll('.wrow[data-w]')) {
+          const g = k => r.querySelector(`[data-k=${k}]`).value.trim(), sets = parseInt(g('sets'), 10), mode = g('mode'), rir = g('rir');
+          if (!(sets >= 1 && sets <= 20)) return err(`Settimana ${r.dataset.w}: le serie devono essere tra 1 e 20.`);
+          const wk = { sets, reps: g('reps') || '–' };
+          if (rir !== '') wk.rir = /^\d+$/.test(rir) ? +rir : rir;
+          if (mode === 'backoff') wk.bo = true;
+          if (mode === 'test') wk.test = true;
+          if (mode !== 'normale') wk.mode = mode;
+          weeks.push(wk);
+        }
+      } else {
+        const g = parseInt(sh.querySelector('#e-g').value, 10);
+        if (!(g >= 1 && g <= 20)) return err('I giri devono essere tra 1 e 20.');
+        day.circuit.rounds = g;
+        const rp = sh.querySelector('#e-reps').value.trim(); if (rp) e.reps = rp; else delete e.reps;
+      }
+      e.n = name;
+      e.d = sh.querySelector('#e-d').value;
+      if (weeks) { e.weeks = weeks; delete e.bo; }
       const v = sh.querySelector('#e-v').value.trim(); if (v && /^https?:\/\//i.test(v)) e.video = v; else delete e.video;
       e.rest = sh.querySelector('#e-r').value.trim();
       e.cue = sh.querySelector('#e-c').value.trim();
-      const b = sh.querySelector('#e-b');
-      if (b) { e.bo = b.checked; if (!b.checked) e.weeks?.forEach(x => x && delete x.bo); }
-      save(); closeSheet(); redraw(); toast('Esercizio aggiornato');
+      if (isNew) day.ex.push(e);
+      save(); closeSheet(); redraw(); toast(isNew ? 'Esercizio aggiunto' : 'Esercizio aggiornato');
     });
   });
 }
@@ -267,6 +336,7 @@ function openReport(pid) {
       const sections = P.days.map(day => {
         const rows = day.ex.map((e, i) => {
           const c = exStats(P, day, i, w), p = pw > 0 ? exStats(P, day, i, pw) : null;
+          if (e.off && !c && !p) return '';
           let cls = 'na', ico = '·', m;
           if (!c) m = 'Non ancora fatto questa settimana';
           else if (!p) m = `<b>${fmt(c.maxKg)} kg × ${c.best}</b> · nessun dato in S${pw || '–'}`;

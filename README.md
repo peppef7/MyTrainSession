@@ -9,7 +9,7 @@ Web app per iPhone: carichi il PDF della scheda del personal trainer, scegli la 
 - **Note** per ogni esercizio e settimana, con la nota della settimana prima.
 - **Ripresa**: ogni serie si salva subito. Se lasci una scheda a metà, l'app ti riporta al primo esercizio che manca.
 - **Report settimanale**: volume e ripetizioni rispetto alla settimana prima, grafico S1–S8, e per ogni esercizio il carico massimo e le ripetizioni della serie migliore (↑ progresso, ↓ regresso).
-- **Modifica esercizio**: serve a correggere quello che è stato letto male dal PDF (nome, video, recupero, back off).
+- **Modifica esercizio**: cambia nome, distretto, serie, ripetizioni, RIR e modalità (normale, back off, drop set, rest-pause, cedimento, test) settimana per settimana, oltre a video, recupero e indicazioni. Da una scheda puoi anche aggiungere un esercizio o toglierlo. Le serie già registrate non si perdono.
 - **Backup**: esporta e ripristina un file .json, da salvare su Drive o su File.
 
 ## Installarla sull'iPhone
